@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src data: blob:; connect-src ipc: http://ipc.localhost">
+  <title>Suno 歌曲下载</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./tauri.js" defer></script>
+  <script src="./renderer.js" defer></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div class="brand-row">
+        <img class="brand-mark" src="./songkeep.svg" alt="" aria-hidden="true">
+        <span class="brand-name">SONGKEEP</span>
+        <span class="brand-note">Suno 分享歌曲下载</span>
+      </div>
+      <h1>Suno V6 音频下载</h1>
+      <p>粘贴链接，先试听、看歌词，再下载到你想要的位置。无需登录。</p>
+    </header>
+
+    <div class="workflow">
+    <section class="card" aria-labelledby="read-heading">
+      <div class="section-heading">
+        <span class="step">01</span>
+        <div>
+          <h2 id="read-heading">读取歌曲</h2>
+          <p>支持 Suno 分享链接和歌曲页面链接</p>
+        </div>
+      </div>
+      <form id="read-form" class="link-row">
+        <label class="sr-only" for="song-url">Suno 歌曲链接</label>
+        <input id="song-url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://suno.com/s/…" required>
+        <button id="read-button" type="submit" class="button button-dark">读取歌曲</button>
+      </form>
+      <p class="network-note">读取前请先确认当前网络可以正常打开 suno.com；如无法访问，请检查网络或代理设置。</p>
+      <div id="song-panel" class="song-panel hidden">
+        <div class="song-title-row">
+          <div>
+            <p class="overline">已找到歌曲</p>
+            <h3 id="song-title"></h3>
+            <p id="song-duration" class="song-duration"></p>
+          </div>
+          <button id="preview-button" class="preview-button" type="button" aria-label="试听歌曲">♪ 试听</button>
+        </div>
+        <audio id="preview-audio" preload="none"></audio>
+        <p id="preview-status" class="preview-status" role="status" aria-live="polite"></p>
+        <div class="song-meta" aria-label="歌曲公开信息">
+          <div><span>作者</span><strong id="song-author">暂无数据</strong></div>
+          <div><span>发布日期</span><strong id="song-published">暂无数据</strong></div>
+          <div><span>播放</span><strong id="song-plays">暂无数据</strong></div>
+          <div><span>点赞</span><strong id="song-likes">暂无数据</strong></div>
+          <div><span>转发</span><strong id="song-shares">暂无数据</strong></div>
+        </div>
+        <div class="lyrics-heading">
+          <span>歌词</span>
+          <div class="lyrics-actions">
+            <span id="lyrics-count"></span>
+            <button id="copy-lyrics-button" class="copy-lyrics-button" type="button" disabled>复制歌词</button>
+          </div>
+        </div>
+        <pre id="lyrics-text" class="lyrics-text"></pre>
+      </div>
+    </section>
+
+    <section class="card save-card" aria-labelledby="save-heading">
+      <div class="section-heading">
+        <span class="step">02</span>
+        <div>
+          <h2 id="save-heading">下载到本地</h2>
+          <p>默认位置可记住，保存时仍可改目录</p>
+        </div>
+      </div>
+      <fieldset class="format-field">
+        <legend>音频格式</legend>
+        <div class="format-options">
+          <label class="format-option">
+            <input type="radio" name="audio-format" value="mp3" checked>
+            <span><strong>MP3</strong><small>通用格式</small></span>
+          </label>
+          <label class="format-option">
+            <input type="radio" name="audio-format" value="m4a">
+            <span><strong>M4A</strong><small>平台原始文件格式</small></span>
+          </label>
+        </div>
+      </fieldset>
+      <div class="save-hint">
+        <span aria-hidden="true">↘</span>
+        <p>保存窗口会从默认目录打开，也可以临时选择其他位置并修改文件名。</p>
+      </div>
+      <div class="folder-setting" aria-labelledby="folder-setting-label">
+        <div class="folder-setting-main">
+          <span id="folder-setting-label" class="folder-setting-label">默认下载位置</span>
+          <span id="download-folder-path" class="download-folder-path">正在读取…</span>
+        </div>
+        <div class="folder-setting-actions">
+          <button id="choose-folder-button" class="text-button folder-button" type="button">设置</button>
+          <button id="reset-folder-button" class="text-button folder-button folder-reset-button" type="button">恢复默认</button>
+        </div>
+      </div>
+      <p id="folder-status" class="folder-status" role="status" aria-live="polite"></p>
+      <label class="checkbox-row">
+        <input id="save-lyrics" type="checkbox">
+        <span>同时保存歌词文本</span>
+      </label>
+      <button id="download-button" type="button" class="button button-accent" disabled>下载到本地</button>
+      <div id="download-state" class="download-state hidden">
+        <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+        <div class="status-row">
+          <span id="status-text" role="status" aria-live="polite"></span>
+          <button id="reveal-button" class="text-button hidden" type="button">打开所在位置 ↗</button>
+        </div>
+      </div>
+    </section>
+    </div>
+    <footer class="legal-note" aria-label="格式与版权说明">
+      <p><strong>格式说明：</strong>M4A 仅指平台提供的原始文件格式，不代表无损音频、制作母带或更高音质。</p>
+      <p><strong>使用声明：</strong>下载的音频仅供个人试听。本工具不提供任何版权授权，也不对用户后续使用产生的版权问题负责；请用户自行阅读并遵守 Suno 的版权协议与使用规则。</p>
+    </footer>
+  </main>
+</body>
+</html>

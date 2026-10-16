@@ -1,0 +1,20 @@
+{
+  "name": "songkeep",
+  "productName": "SongKeep",
+  "version": "0.3.0",
+  "description": "Download songs and lyrics from Suno share links without signing in",
+  "license": "MIT",
+  "author": "SoKei",
+  "repository": "github:SoKeiKei/SongKeep",
+  "scripts": {
+    "start": "tauri dev",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "check": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "build": "tauri build --no-bundle",
+    "build:win": "tauri build --no-bundle --target x86_64-pc-windows-msvc",
+    "build:mac": "tauri build --bundles app,dmg --target universal-apple-darwin"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4"
+  }
+}

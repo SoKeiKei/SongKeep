@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build outputs
+out/
+dist/
+src-tauri/target/
+src-tauri/target-*/
+src-tauri/release/
+src-tauri/gen/
+*.exe
+*.msi
+*.dmg
+*.nupkg
+
+# downloads / local data
+*.mp3
+*.m4a
+*.log
+.env*
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
