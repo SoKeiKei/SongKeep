@@ -74,7 +74,7 @@ static NO_LYRICS_RE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid instrumental marker regular expression")
 });
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Song {
     pub id: String,
     pub title: String,
@@ -699,6 +699,19 @@ pub async fn load_song(input: &str) -> Result<Song> {
     parse_song_page(&page, &source_url)
 }
 
+pub fn validate_cached_song(song: &Song) -> Result<()> {
+    if !UUID_RE.is_match(&song.id) || song.title.trim().is_empty() {
+        bail!("历史记录中的歌曲信息无效");
+    }
+    validate_media_url(&song.media_url, &song.id)?;
+    let source_url = Url::parse(&song.source_url).context("历史记录中的歌曲链接无效")?;
+    let page = validate_page_url(&source_url)?;
+    if page.id.as_deref() != Some(song.id.as_str()) {
+        bail!("历史记录中的歌曲链接与歌曲 ID 不一致");
+    }
+    Ok(())
+}
+
 async fn get_audio_rights(client: &Client, id: &str) -> Result<Rights> {
     let url = validate_rights_url(RIGHTS_URL)?;
     let response = client
@@ -949,6 +962,20 @@ mod tests {
         assert_eq!(song.title, "测试歌曲");
         assert_eq!(song.lyrics, "[Intro]\n第一句中文\n第二句中文\n[Outro]");
         assert_eq!(song.duration, Some(12.5));
+        assert!(validate_cached_song(&song).is_ok());
+    }
+
+    #[test]
+    fn rejects_cached_song_with_mismatched_source_or_media_url() {
+        let song = parse_song_page(&fixture(), &format!("https://suno.com/song/{ID}"))
+            .expect("song fixture");
+        let mut bad_source = song.clone();
+        bad_source.source_url = "https://evil.example/song".into();
+        assert!(validate_cached_song(&bad_source).is_err());
+
+        let mut bad_media = song;
+        bad_media.media_url = "https://evil.example/audio.m4a".into();
+        assert!(validate_cached_song(&bad_media).is_err());
     }
 
     #[test]
@@ -1039,6 +1066,18 @@ mod tests {
         assert!(message.contains("无法连接"));
         assert!(message.contains("浏览器确认"));
         assert!(message.contains("代理设置"));
+    }
+
+    #[test]
+    #[ignore = "需要访问 Suno 真实服务"]
+    fn live_song_page_uses_system_network_settings() {
+        let url = std::env::var("SONGKEEP_TEST_URL")
+            .expect("set SONGKEEP_TEST_URL to a public Suno song or share URL");
+        let song = tauri::async_runtime::block_on(load_song(&url))
+            .expect("read song metadata using the application's HTTP client");
+        assert!(UUID_RE.is_match(&song.id));
+        assert!(!song.title.trim().is_empty());
+        validate_media_url(&song.media_url, &song.id).expect("valid song media URL");
     }
 
     #[test]

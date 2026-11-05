@@ -16,6 +16,16 @@
         <img class="brand-mark" src="./songkeep.svg" alt="" aria-hidden="true">
         <span class="brand-name">SONGKEEP</span>
         <span class="brand-note">Suno 分享歌曲下载</span>
+        <label class="theme-picker">
+          <span>主题</span>
+          <select id="theme-select" aria-label="选择界面主题">
+            <option value="forest">松林</option>
+            <option value="sea">海盐</option>
+            <option value="sunset">暖阳</option>
+            <option value="lavender">薰衣草</option>
+            <option value="night">黑夜</option>
+          </select>
+        </label>
       </div>
       <h1>Suno V6 音频下载</h1>
       <p>粘贴链接，先试听、看歌词，再下载到你想要的位置。无需登录。</p>
@@ -36,6 +46,16 @@
         <button id="read-button" type="submit" class="button button-dark">读取歌曲</button>
       </form>
       <p class="network-note">读取前请先确认当前网络可以正常打开 suno.com；如无法访问，请检查网络或代理设置。</p>
+      <details id="history-panel" class="history-panel">
+        <summary>
+          <span>历史记录</span>
+          <span id="history-count" class="history-count">0</span>
+        </summary>
+        <p id="history-status" class="history-status" role="status" aria-live="polite"></p>
+        <p id="history-empty" class="history-empty">解析过的歌曲会保存在这里。</p>
+        <ul id="history-list" class="history-list" aria-label="已解析歌曲"></ul>
+        <button id="clear-history-button" class="text-button history-clear" type="button" disabled>清空历史</button>
+      </details>
       <div id="song-panel" class="song-panel hidden">
         <div class="song-title-row">
           <div>
@@ -47,6 +67,12 @@
         </div>
         <audio id="preview-audio" preload="none"></audio>
         <p id="preview-status" class="preview-status" role="status" aria-live="polite"></p>
+        <div id="preview-controls" class="preview-controls hidden">
+          <span id="preview-current-time" class="preview-time">0:00</span>
+          <label class="sr-only" for="preview-seek">试听进度</label>
+          <input id="preview-seek" class="preview-seek" type="range" min="0" max="0" step="0.1" value="0" disabled>
+          <span id="preview-total-time" class="preview-time">0:00</span>
+        </div>
         <div class="song-meta" aria-label="歌曲公开信息">
           <div><span>作者</span><strong id="song-author">暂无数据</strong></div>
           <div><span>发布日期</span><strong id="song-published">暂无数据</strong></div>

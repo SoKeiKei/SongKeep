@@ -21,6 +21,8 @@ use crate::{
     suno::{self, Progress, Song},
 };
 
+const MAX_HISTORY_ITEMS: usize = 100;
+
 #[derive(Default)]
 struct Session {
     current_song: Option<Song>,
@@ -57,6 +59,11 @@ struct Preferences {
     download_folder: PathBuf,
 }
 
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct SongHistory {
+    songs: Vec<Song>,
+}
+
 fn error_response(error: impl std::fmt::Display) -> Value {
     json!({ "ok": false, "error": error.to_string() })
 }
@@ -67,6 +74,64 @@ fn canceled_response() -> Value {
 
 fn preferences_path(app: &AppHandle) -> anyhow::Result<PathBuf> {
     Ok(app.path().app_config_dir()?.join("preferences.json"))
+}
+
+fn song_history_path(app: &AppHandle) -> anyhow::Result<PathBuf> {
+    Ok(app.path().app_config_dir()?.join("song-history.json"))
+}
+
+fn read_song_history(app: &AppHandle) -> anyhow::Result<SongHistory> {
+    let path = song_history_path(app)?;
+    match fs::read(path) {
+        Ok(bytes) => {
+            let history: SongHistory = serde_json::from_slice(&bytes)?;
+            for song in &history.songs {
+                suno::validate_cached_song(song)?;
+            }
+            Ok(history)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(SongHistory::default()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn write_song_history(app: &AppHandle, history: &SongHistory) -> anyhow::Result<()> {
+    let path = song_history_path(app)?;
+    let directory = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("无法确定历史记录保存目录"))?;
+    fs::create_dir_all(directory)?;
+    let temporary = directory.join(format!("song-history-{}.tmp", Uuid::new_v4()));
+    let data = serde_json::to_vec(history)?;
+    let result = (|| -> anyhow::Result<()> {
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)?;
+        file.write_all(&data)?;
+        file.sync_all()?;
+        drop(file);
+        if path.exists() {
+            fs::remove_file(&path)?;
+        }
+        fs::rename(&temporary, &path)?;
+        Ok(())
+    })();
+    let _ = fs::remove_file(&temporary);
+    result
+}
+
+fn remember_song(history: &mut SongHistory, song: Song) {
+    history.songs.retain(|entry| entry.id != song.id);
+    history.songs.insert(0, song);
+    history.songs.truncate(MAX_HISTORY_ITEMS);
+}
+
+fn save_song_to_history(app: &AppHandle, song: Song) -> anyhow::Result<()> {
+    suno::validate_cached_song(&song)?;
+    let mut history = read_song_history(app)?;
+    remember_song(&mut history, song);
+    write_song_history(app, &history)
 }
 
 fn system_download_folder(app: &AppHandle) -> anyhow::Result<PathBuf> {
@@ -131,7 +196,11 @@ fn save_preferences(app: &AppHandle, folder: &Path) -> anyhow::Result<()> {
 }
 
 #[tauri::command]
-pub async fn load_song(url: String, state: State<'_, AppState>) -> Result<Value, String> {
+pub async fn load_song(
+    app: AppHandle,
+    url: String,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
     if state.downloading.load(Ordering::Acquire) {
         return Ok(error_response("请等待当前下载完成。"));
     }
@@ -151,6 +220,9 @@ pub async fn load_song(url: String, state: State<'_, AppState>) -> Result<Value,
     }
     match suno::load_song(&normalized).await {
         Ok(song) => {
+            let history_warning = save_song_to_history(&app, song.clone())
+                .err()
+                .map(|error| format!("历史记录未能保存：{error}"));
             let public = song.public();
             let mut session = state
                 .session
@@ -158,10 +230,66 @@ pub async fn load_song(url: String, state: State<'_, AppState>) -> Result<Value,
                 .map_err(|_| "应用状态保存失败".to_string())?;
             session.current_song = Some(song);
             session.loaded_url = Some(normalized);
-            Ok(json!({ "ok": true, "song": public }))
+            Ok(json!({ "ok": true, "song": public, "historyWarning": history_warning }))
         }
         Err(error) => Ok(error_response(error)),
     }
+}
+
+#[tauri::command]
+pub fn get_song_history(app: AppHandle) -> Result<Value, String> {
+    let history = read_song_history(&app).map_err(|error| format!("读取历史记录失败：{error}"))?;
+    let songs = history.songs.iter().map(Song::public).collect::<Vec<_>>();
+    Ok(json!({ "ok": true, "songs": songs }))
+}
+
+#[tauri::command]
+pub fn load_history_song(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Value, String> {
+    if state.downloading.load(Ordering::Acquire) {
+        return Ok(error_response("请等待当前下载完成。"));
+    }
+    let id = id.trim().to_ascii_lowercase();
+    let history = read_song_history(&app).map_err(|error| format!("读取历史记录失败：{error}"))?;
+    let Some(song) = history.songs.into_iter().find(|song| song.id == id) else {
+        return Ok(error_response("这首歌曲已不在历史记录中。"));
+    };
+    let history_warning = save_song_to_history(&app, song.clone())
+        .err()
+        .map(|error| format!("历史记录未能更新：{error}"));
+    let public = song.public();
+    let mut session = state
+        .session
+        .lock()
+        .map_err(|_| "应用状态保存失败".to_string())?;
+    session.loaded_url = Some(song.source_url.clone());
+    session.current_song = Some(song);
+    session.last_downloaded = None;
+    session.preview_cache = None;
+    Ok(json!({ "ok": true, "song": public, "historyWarning": history_warning }))
+}
+
+#[tauri::command]
+pub fn remove_song_history(app: AppHandle, id: String) -> Result<Value, String> {
+    let id = id.trim().to_ascii_lowercase();
+    let mut history =
+        read_song_history(&app).map_err(|error| format!("读取历史记录失败：{error}"))?;
+    let original_len = history.songs.len();
+    history.songs.retain(|song| song.id != id);
+    if history.songs.len() != original_len {
+        write_song_history(&app, &history).map_err(|error| format!("删除历史记录失败：{error}"))?;
+    }
+    Ok(json!({ "ok": true }))
+}
+
+#[tauri::command]
+pub fn clear_song_history(app: AppHandle) -> Result<Value, String> {
+    write_song_history(&app, &SongHistory::default())
+        .map_err(|error| format!("清空历史记录失败：{error}"))?;
+    Ok(json!({ "ok": true }))
 }
 
 #[tauri::command]
@@ -442,6 +570,13 @@ pub async fn download_song(
             Err(error) => return Ok(error_response(error)),
         },
     };
+    let history_warning = if reloaded {
+        save_song_to_history(&app, song.clone())
+            .err()
+            .map(|error| format!("历史记录未能保存：{error}"))
+    } else {
+        None
+    };
 
     let (folder, _) = match download_folder_state(&app) {
         Ok(value) => value,
@@ -469,6 +604,9 @@ pub async fn download_song(
         if reloaded {
             response["song"] =
                 serde_json::to_value(song.public()).map_err(|error| error.to_string())?;
+        }
+        if let Some(warning) = &history_warning {
+            response["historyWarning"] = json!(warning);
         }
         return Ok(response);
     };
@@ -547,13 +685,59 @@ pub async fn download_song(
             "lyricsPath": lyrics_path.as_ref().map(|path| path.to_string_lossy().to_string()),
             "bytes": audio_data.len()
         },
-        "song": song.public()
+        "song": song.public(),
+        "historyWarning": history_warning
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_song(id: &str, title: &str) -> Song {
+        Song {
+            id: id.to_string(),
+            title: title.to_string(),
+            lyrics: String::new(),
+            media_url: String::new(),
+            source_url: String::new(),
+            duration: None,
+            author: None,
+            published_at: None,
+            play_count: None,
+            like_count: None,
+            share_count: None,
+        }
+    }
+
+    #[test]
+    fn history_moves_existing_song_to_the_front_without_duplicates() {
+        let mut history = SongHistory {
+            songs: vec![test_song("first", "First"), test_song("second", "Second")],
+        };
+
+        remember_song(&mut history, test_song("first", "First updated"));
+
+        assert_eq!(history.songs.len(), 2);
+        assert_eq!(history.songs[0].id, "first");
+        assert_eq!(history.songs[0].title, "First updated");
+        assert_eq!(history.songs[1].id, "second");
+    }
+
+    #[test]
+    fn history_keeps_only_the_most_recent_hundred_songs() {
+        let mut history = SongHistory {
+            songs: (0..MAX_HISTORY_ITEMS)
+                .map(|index| test_song(&format!("song-{index}"), "Song"))
+                .collect(),
+        };
+
+        remember_song(&mut history, test_song("newest", "Newest"));
+
+        assert_eq!(history.songs.len(), MAX_HISTORY_ITEMS);
+        assert_eq!(history.songs[0].id, "newest");
+        assert_eq!(history.songs[MAX_HISTORY_ITEMS - 1].id, "song-98");
+    }
 
     #[test]
     fn explains_common_local_save_errors() {
