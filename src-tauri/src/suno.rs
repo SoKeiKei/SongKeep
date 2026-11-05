@@ -1043,6 +1043,18 @@ mod tests {
 
     #[test]
     #[ignore = "需要访问 Suno 真实服务"]
+    fn live_song_page_uses_system_network_settings() {
+        let url = std::env::var("SONGKEEP_TEST_URL")
+            .expect("set SONGKEEP_TEST_URL to a public Suno song or share URL");
+        let song = tauri::async_runtime::block_on(load_song(&url))
+            .expect("read song metadata using the application's HTTP client");
+        assert!(UUID_RE.is_match(&song.id));
+        assert!(!song.title.trim().is_empty());
+        validate_media_url(&song.media_url, &song.id).expect("valid song media URL");
+    }
+
+    #[test]
+    #[ignore = "需要访问 Suno 真实服务"]
     fn live_song_can_be_read_decrypted_and_converted() {
         let song = tauri::async_runtime::block_on(load_song("https://suno.com/s/M4txVv6fKRJnD6tO"))
             .expect("live song metadata");

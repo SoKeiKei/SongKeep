@@ -9,7 +9,7 @@
 ## 使用
 
 1. 打开程序，粘贴 `https://suno.com/s/...` 或 `https://suno.com/song/...` 链接。可先点击“读取歌曲”查看信息、试听并一键复制歌词；也可直接点击“下载到本地”，程序会先确认是否读取当前链接。
-   使用前请先在浏览器确认当前网络可以正常打开 `https://suno.com`；如无法访问，请检查网络或代理设置。
+   使用前请先在浏览器确认当前网络可以正常打开 `https://suno.com`；如无法访问，请检查网络或代理设置。程序会使用 Windows / macOS 的系统代理设置；仅在浏览器中启用的代理扩展不会应用到本程序。
 2. 选择 MP3 或 M4A（默认 MP3）。如需另存歌词，手动勾选“同时保存歌词文本”。
 3. 在“默认下载位置”处点击“设置”选择常用目录。程序会记住这个设置，下次打开时继续使用；点击“恢复默认”可以回到系统下载目录。
 4. 点击“下载到本地”。保存窗口会从默认目录打开，你仍可以临时选择其他位置并修改文件名。目标文件同名时，选择“覆盖”会替换原文件；完成后可点击“打开所在位置”。
@@ -34,6 +34,13 @@ src-tauri/target/x86_64-pc-windows-msvc/release/songkeep.exe
 在 macOS 上运行 `npm run build:mac`，生成同时兼容 Apple 芯片和 Intel 芯片的应用。不同系统的成品需在对应系统上制作。当前未配置代码签名，首次打开时系统可能提示确认来源。
 
 运行 `npm test` 检查链接、歌曲信息与下载逻辑。MP3 转换已经内置在单文件程序中，不需要安装额外软件或使用第三方下载服务。
+
+如需验证真实歌曲页面的网络读取（包含系统代理），在 PowerShell 中运行以下命令。此测试只读取歌曲信息，不下载音频：
+
+```powershell
+$env:SONGKEEP_TEST_URL = 'https://suno.com/s/公开分享码'
+cargo test --manifest-path src-tauri/Cargo.toml suno::tests::live_song_page_uses_system_network_settings -- --ignored --exact
+```
 
 ## 注意
 
