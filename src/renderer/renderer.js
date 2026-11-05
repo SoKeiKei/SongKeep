@@ -15,6 +15,16 @@ const songShares = document.getElementById('song-shares');
 const previewButton = document.getElementById('preview-button');
 const previewAudio = document.getElementById('preview-audio');
 const previewStatus = document.getElementById('preview-status');
+const previewControls = document.getElementById('preview-controls');
+const previewSeek = document.getElementById('preview-seek');
+const previewCurrentTime = document.getElementById('preview-current-time');
+const previewTotalTime = document.getElementById('preview-total-time');
+const historyPanel = document.getElementById('history-panel');
+const historyCount = document.getElementById('history-count');
+const historyStatus = document.getElementById('history-status');
+const historyEmpty = document.getElementById('history-empty');
+const historyList = document.getElementById('history-list');
+const clearHistoryButton = document.getElementById('clear-history-button');
 const formatInputs = [...document.querySelectorAll('input[name="audio-format"]')];
 const saveLyrics = document.getElementById('save-lyrics');
 const downloadButton = document.getElementById('download-button');
@@ -34,12 +44,40 @@ let loadedUrl = '';
 let displayedSong;
 let currentLyrics = '';
 let copyFeedbackTimer;
+let songHistory = [];
+
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const wholeSeconds = Math.floor(seconds);
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const remaining = wholeSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`
+    : `${minutes}:${String(remaining).padStart(2, '0')}`;
+}
+
+function updatePreviewTimeline() {
+  const duration = Number(previewAudio.duration);
+  const canSeek = Boolean(previewUrl) && Number.isFinite(duration) && duration > 0;
+  previewSeek.disabled = !canSeek;
+  previewSeek.max = canSeek ? String(duration) : '0';
+  if (!previewSeek.matches(':active')) previewSeek.value = canSeek ? String(previewAudio.currentTime || 0) : '0';
+  previewCurrentTime.textContent = formatTime(previewAudio.currentTime || 0);
+  previewTotalTime.textContent = canSeek ? formatTime(duration) : formatTime(Number(displayedSong?.duration));
+}
 
 function resetPreview() {
   previewAudio.pause();
   previewAudio.removeAttribute('src');
   previewAudio.load();
   previewUrl = '';
+  previewControls.classList.add('hidden');
+  previewSeek.disabled = true;
+  previewSeek.max = '0';
+  previewSeek.value = '0';
+  previewCurrentTime.textContent = '0:00';
+  previewTotalTime.textContent = '0:00';
   previewButton.textContent = '♪ 试听';
   previewButton.disabled = false;
   previewStatus.textContent = '';
@@ -85,6 +123,141 @@ previewAudio.addEventListener('ended', () => {
 previewAudio.addEventListener('error', () => {
   if (previewUrl) previewStatus.textContent = '试听音频加载失败。';
 });
+previewAudio.addEventListener('loadedmetadata', updatePreviewTimeline);
+previewAudio.addEventListener('durationchange', updatePreviewTimeline);
+previewAudio.addEventListener('timeupdate', updatePreviewTimeline);
+previewAudio.addEventListener('seeked', updatePreviewTimeline);
+
+previewSeek.addEventListener('input', () => {
+  if (previewSeek.disabled) return;
+  previewAudio.currentTime = Number(previewSeek.value);
+  previewCurrentTime.textContent = formatTime(previewAudio.currentTime);
+});
+
+function setHistoryStatus(message = '', kind = '') {
+  historyStatus.textContent = message;
+  historyStatus.className = ['history-status', kind].filter(Boolean).join(' ');
+}
+
+function renderSongHistory(songs) {
+  songHistory = Array.isArray(songs) ? songs : [];
+  historyCount.textContent = String(songHistory.length);
+  historyEmpty.classList.toggle('hidden', songHistory.length > 0);
+  clearHistoryButton.disabled = busy || songHistory.length === 0;
+  historyList.replaceChildren(...songHistory.map(song => {
+    const item = document.createElement('li');
+    item.className = 'history-item';
+
+    const info = document.createElement('div');
+    info.className = 'history-item-info';
+    const title = document.createElement('strong');
+    title.className = 'history-item-title';
+    title.textContent = song.title || '未命名歌曲';
+    const detail = document.createElement('span');
+    detail.className = 'history-item-detail';
+    const duration = Number(song.duration);
+    const metadata = [
+      song.author,
+      Number.isFinite(duration) && duration > 0 ? formatTime(duration) : '',
+    ].filter(Boolean);
+    detail.textContent = metadata.join(' · ') || song.sourceUrl || song.id;
+    info.append(title, detail);
+
+    const actions = document.createElement('div');
+    actions.className = 'history-item-actions';
+    for (const [action, label, className] of [
+      ['open', '打开', 'history-open'],
+      ['download', '下载', 'history-download'],
+      ['remove', '删除', 'history-remove'],
+    ]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = className;
+      button.dataset.action = action;
+      button.dataset.id = song.id;
+      button.textContent = label;
+      button.disabled = busy;
+      actions.append(button);
+    }
+    item.append(info, actions);
+    return item;
+  }));
+}
+
+async function refreshSongHistory() {
+  if (typeof window.sunoApp.getSongHistory !== 'function') return;
+  try {
+    const response = await window.sunoApp.getSongHistory();
+    if (!response?.ok) throw new Error(response?.error || '读取历史记录失败。');
+    renderSongHistory(response.songs);
+    setHistoryStatus('');
+  } catch (error) {
+    clearHistoryButton.disabled = busy;
+    setHistoryStatus(error.message || '读取历史记录失败。', 'error');
+  }
+}
+
+async function loadHistoryEntry(id) {
+  if (busy || typeof window.sunoApp.loadHistorySong !== 'function') return '';
+  busy = true;
+  updateButtons();
+  setHistoryStatus('正在载入历史歌曲…');
+  try {
+    const response = await window.sunoApp.loadHistorySong(id);
+    if (!response?.ok || !response.song) throw new Error(response?.error || '载入历史歌曲失败。');
+    const url = response.song.sourceUrl;
+    urlInput.value = url;
+    applySong(response.song, url);
+    showStatus('已从历史记录载入歌曲，可以直接试听或下载。', 0, 'success');
+    historyPanel.open = true;
+    await refreshSongHistory();
+    setHistoryStatus(response.historyWarning || '', response.historyWarning ? 'warning' : '');
+    return url;
+  } catch (error) {
+    setHistoryStatus(error.message || '载入历史歌曲失败。', 'error');
+    return '';
+  } finally {
+    busy = false;
+    updateButtons();
+  }
+}
+
+async function removeHistoryEntry(id) {
+  if (busy || typeof window.sunoApp.removeSongHistory !== 'function') return;
+  busy = true;
+  updateButtons();
+  setHistoryStatus('正在删除历史记录…');
+  try {
+    const response = await window.sunoApp.removeSongHistory(id);
+    if (!response?.ok) throw new Error(response?.error || '删除历史记录失败。');
+    await refreshSongHistory();
+    setHistoryStatus('已从历史记录删除。', 'success');
+  } catch (error) {
+    setHistoryStatus(error.message || '删除历史记录失败。', 'error');
+  } finally {
+    busy = false;
+    updateButtons();
+  }
+}
+
+async function clearSongHistory() {
+  if (busy || typeof window.sunoApp.clearSongHistory !== 'function') return;
+  if (!window.confirm('确定清空本机保存的全部历史记录吗？此操作无法撤销。')) return;
+  busy = true;
+  updateButtons();
+  setHistoryStatus('正在清空历史记录…');
+  try {
+    const response = await window.sunoApp.clearSongHistory();
+    if (!response?.ok) throw new Error(response?.error || '清空历史记录失败。');
+    renderSongHistory([]);
+    setHistoryStatus('历史记录已清空。', 'success');
+  } catch (error) {
+    setHistoryStatus(error.message || '清空历史记录失败。', 'error');
+  } finally {
+    busy = false;
+    updateButtons();
+  }
+}
 
 function updateButtons() {
   urlInput.disabled = busy;
@@ -93,6 +266,8 @@ function updateButtons() {
   copyLyricsButton.disabled = busy || !currentLyrics;
   chooseFolderButton.disabled = busy || folderBusy;
   resetFolderButton.disabled = busy || folderBusy;
+  clearHistoryButton.disabled = busy || songHistory.length === 0;
+  for (const button of historyList.querySelectorAll('button')) button.disabled = busy;
   for (const input of formatInputs) input.disabled = busy;
 }
 
@@ -204,6 +379,7 @@ function applySong(song, url, preserveLyricsChoice = false) {
   loadedUrl = url;
   songTitle.textContent = song.title;
   previewUrl = song.previewUrl || '';
+  previewControls.classList.toggle('hidden', !previewUrl);
   previewButton.disabled = !previewUrl;
   showDuration(Number(song.duration));
   songAuthor.textContent = song.author || '暂无数据';
@@ -217,6 +393,7 @@ function applySong(song, url, preserveLyricsChoice = false) {
   saveLyrics.disabled = !currentLyrics;
   if (!preserveLyricsChoice || !currentLyrics) saveLyrics.checked = false;
   songPanel.classList.remove('hidden');
+  updatePreviewTimeline();
   updateButtons();
 }
 
@@ -252,7 +429,14 @@ form.addEventListener('submit', async event => {
     const response = await window.sunoApp.loadSong(url);
     if (!response.ok) throw new Error(response.error);
     applySong(response.song, url);
-    showStatus('歌曲信息已读取，点击“下载到本地”即可保存。', 0, 'success');
+    await refreshSongHistory();
+    showStatus(
+      response.historyWarning
+        ? `歌曲已读取，但${response.historyWarning}`
+        : '歌曲信息已读取，点击“下载到本地”即可保存。',
+      0,
+      response.historyWarning ? 'warning' : 'success',
+    );
   } catch (error) {
     showStatus(error.message || '读取失败，请检查链接后重试。', 0, 'error');
   } finally {
@@ -264,6 +448,19 @@ form.addEventListener('submit', async event => {
 
 chooseFolderButton.addEventListener('click', chooseFolder);
 resetFolderButton.addEventListener('click', resetFolder);
+clearHistoryButton.addEventListener('click', clearSongHistory);
+
+historyList.addEventListener('click', async event => {
+  const button = event.target.closest('button[data-action][data-id]');
+  if (!button || busy) return;
+  const { action, id } = button.dataset;
+  if (action === 'remove') {
+    await removeHistoryEntry(id);
+    return;
+  }
+  const url = await loadHistoryEntry(id);
+  if (url && action === 'download') await runDownload(url);
+});
 
 copyLyricsButton.addEventListener('click', async () => {
   if (!currentLyrics || busy) return;
@@ -286,9 +483,8 @@ window.sunoApp.onProgress(progress => {
   showStatus(message, percent);
 });
 
-downloadButton.addEventListener('click', async () => {
-  if (busy || !urlInput.checkValidity()) return;
-  const url = urlInput.value.trim();
+async function runDownload(url) {
+  if (busy || !url) return;
   busy = true;
   revealButton.classList.add('hidden');
   downloadButton.textContent = '下载中…';
@@ -300,12 +496,19 @@ downloadButton.addEventListener('click', async () => {
     if (response.song && (loadedUrl !== url || songPanel.classList.contains('hidden'))) {
       applySong(response.song, url, true);
     }
+    if (response.song) await refreshSongHistory();
     if (response.canceled) {
-      showStatus('已取消。', 0);
+      showStatus(response.historyWarning || '已取消。', 0, response.historyWarning ? 'warning' : '');
       return;
     }
     if (!response.ok) throw new Error(response.error);
-    showStatus('下载完成，已保存到本地。', 100, 'success');
+    showStatus(
+      response.historyWarning
+        ? `下载完成，已保存到本地，但${response.historyWarning}`
+        : '下载完成，已保存到本地。',
+      100,
+      response.historyWarning ? 'warning' : 'success',
+    );
     revealButton.classList.remove('hidden');
   } catch (error) {
     showStatus(error.message || '下载失败，请稍后重试。', 0, 'error');
@@ -314,8 +517,14 @@ downloadButton.addEventListener('click', async () => {
     downloadButton.textContent = '下载到本地';
     updateButtons();
   }
+}
+
+downloadButton.addEventListener('click', async () => {
+  if (!urlInput.checkValidity()) return;
+  await runDownload(urlInput.value.trim());
 });
 
 revealButton.addEventListener('click', () => window.sunoApp.revealDownload());
 updateButtons();
 loadFolderSetting();
+refreshSongHistory();

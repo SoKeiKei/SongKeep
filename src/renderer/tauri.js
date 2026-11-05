@@ -10,6 +10,10 @@ const invoke = tauri.core.invoke;
 
 window.sunoApp = Object.freeze({
   loadSong: url => invoke('load_song', { url }),
+  getSongHistory: () => invoke('get_song_history'),
+  loadHistorySong: id => invoke('load_history_song', { id }),
+  removeSongHistory: id => invoke('remove_song_history', { id }),
+  clearSongHistory: () => invoke('clear_song_history'),
   loadPreviewAudio: () => invoke('load_preview_audio'),
   downloadSong: options => invoke('download_song', { options }),
   copyLyrics: () => invoke('copy_lyrics'),

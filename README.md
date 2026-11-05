@@ -1,6 +1,6 @@
 # SongKeep · Suno 分享歌曲下载
 
-一个可在 Windows 和 macOS 运行的轻量桌面工具。输入 Suno 分享链接后，可查看歌曲名称、歌词和公开可见的作者、发布日期及互动数据，直接试听，下载 MP3 或原始 M4A 音频。可以设置默认下载位置，保存时仍能临时选择其他目录并修改文件名；需要时也可保存 UTF-8 歌词文本。不需要登录 Suno，也不会读取浏览器中的账号或 Cookie。页面没有公开的数据会显示“暂无数据”。
+一个可在 Windows 和 macOS 运行的轻量桌面工具。输入 Suno 分享链接后，可查看歌曲名称、歌词和公开可见的作者、发布日期及互动数据，直接试听并拖动进度条跳到任意时刻，下载 MP3 或原始 M4A 音频。已解析歌曲会保存在本机历史记录中，可从历史记录恢复歌曲或直接下载，不需要重新粘贴和解析链接。可以设置默认下载位置，保存时仍能临时选择其他目录并修改文件名；需要时也可保存 UTF-8 歌词文本。不需要登录 Suno，也不会读取浏览器中的账号或 Cookie。页面没有公开的数据会显示“暂无数据”。
 
 ## 下载
 
@@ -8,13 +8,15 @@
 
 ## 使用
 
-1. 打开程序，粘贴 `https://suno.com/s/...` 或 `https://suno.com/song/...` 链接。可先点击“读取歌曲”查看信息、试听并一键复制歌词；也可直接点击“下载到本地”，程序会先确认是否读取当前链接。
+1. 打开程序，粘贴 `https://suno.com/s/...` 或 `https://suno.com/song/...` 链接。可先点击“读取歌曲”查看信息、试听并一键复制歌词；试听音频加载后可拖动进度条切换到不同时间段。也可直接点击“下载到本地”，程序会先确认是否读取当前链接。
    使用前请先在浏览器确认当前网络可以正常打开 `https://suno.com`；如无法访问，请检查网络或代理设置。程序会使用 Windows / macOS 的系统代理设置；仅在浏览器中启用的代理扩展不会应用到本程序。
 2. 选择 MP3 或 M4A（默认 MP3）。如需另存歌词，手动勾选“同时保存歌词文本”。
 3. 在“默认下载位置”处点击“设置”选择常用目录。程序会记住这个设置，下次打开时继续使用；点击“恢复默认”可以回到系统下载目录。
 4. 点击“下载到本地”。保存窗口会从默认目录打开，你仍可以临时选择其他位置并修改文件名。目标文件同名时，选择“覆盖”会替换原文件；完成后可点击“打开所在位置”。
 
 无法公开访问、已删除或播放权限受限的歌曲可能无法读取或下载。工具只处理当前输入的单首歌曲。
+
+历史记录保存在本机应用配置目录，最多保留最近解析的 100 首歌曲。点击“打开”可恢复已保存的解析结果；点击历史记录中的“下载”可直接下载该歌曲。若 Suno 后续更换了歌曲音频地址，需重新读取该歌曲链接。
 
 ## 开发与打包
 
@@ -62,6 +64,7 @@ M4A 仅指平台提供的原始文件格式，不代表无损音频、制作母�
 
 SongKeep is a lightweight desktop app (Windows / macOS, built with Tauri) that downloads a song (MP3 or original M4A) and its lyrics from a public Suno share link — no sign-in, no browser cookies. Paste a `suno.com/s/...` or `suno.com/song/...` link, preview, then save.
 
+- Drag the preview timeline to seek. Parsed songs are kept in a local history, where you can reopen or download them without parsing the link again; the history holds the 100 most recent songs.
 - Build: Node.js + Rust, `npm ci`, `npm start` (dev), `npm run build:win` / `npm run build:mac`, `npm test`.
 - Disclaimer: not affiliated with Suno. For personal backup of content you are allowed to access only; you are responsible for complying with Suno's terms and copyright law.
 - License: MIT.

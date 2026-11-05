@@ -8,6 +8,10 @@ pub fn run() {
         .manage(app::AppState::default())
         .invoke_handler(tauri::generate_handler![
             app::load_song,
+            app::get_song_history,
+            app::load_history_song,
+            app::remove_song_history,
+            app::clear_song_history,
             app::load_preview_audio,
             app::download_song,
             app::copy_lyrics,
