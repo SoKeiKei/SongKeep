@@ -36,6 +36,19 @@ const downloadFolderPath = document.getElementById('download-folder-path');
 const chooseFolderButton = document.getElementById('choose-folder-button');
 const resetFolderButton = document.getElementById('reset-folder-button');
 const folderStatus = document.getElementById('folder-status');
+const themeSelect = document.getElementById('theme-select');
+
+const themes = new Set(['forest', 'sea', 'sunset', 'lavender', 'night']);
+const savedTheme = localStorage.getItem('songkeep-theme');
+const activeTheme = themes.has(savedTheme) ? savedTheme : 'forest';
+document.documentElement.dataset.theme = activeTheme;
+themeSelect.value = activeTheme;
+
+themeSelect.addEventListener('change', () => {
+  const theme = themes.has(themeSelect.value) ? themeSelect.value : 'forest';
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('songkeep-theme', theme);
+});
 
 let busy = false;
 let folderBusy = false;
